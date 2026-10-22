@@ -58,3 +58,31 @@ def test_store_closes_database_handles_after_operations(tmp_path, monkeypatch):
     finally:
         for connection in connections:
             connection.close()
+
+
+def test_committed_task_and_snooze_survive_abrupt_process_exit(tmp_path):
+    import os
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    path = tmp_path / "crash.sqlite3"
+    script = """
+import os, sys
+from datetime import datetime
+from focuspilot.storage import TaskStore
+store = TaskStore(sys.argv[1])
+task = store.create('Crash recovery', '2026-10-22T10:05:00')
+store.snooze(task.id, now=datetime(2026, 10, 22, 10))
+os._exit(23)
+"""
+    environment = os.environ.copy()
+    environment["PYTHONPATH"] = str(Path(__file__).resolve().parents[1] / "src")
+    result = subprocess.run([sys.executable, "-c", script, str(path)], env=environment,
+                            capture_output=True, timeout=15)
+    assert result.returncode == 23, result.stderr
+    recovered, = TaskStore(path).list_tasks()
+    assert recovered.title == "Crash recovery"
+    assert recovered.reminder_stage == "snoozed"
+    assert reminder_to_send(recovered, datetime(2026, 10, 22, 10, 9, 59)) is None
+    assert reminder_to_send(recovered, datetime(2026, 10, 22, 10, 10)) == "overdue"
