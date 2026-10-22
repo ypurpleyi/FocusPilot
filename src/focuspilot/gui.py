@@ -3,7 +3,7 @@
 from datetime import datetime
 
 from PySide6.QtCore import Qt, QDateTime, QTimer
-from PySide6.QtGui import QAction
+from PySide6.QtGui import QAction, QColor, QPalette
 from PySide6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QDateTimeEdit, QDialog,
     QDialogButtonBox, QFrame, QHBoxLayout, QLabel, QLineEdit, QMainWindow,
@@ -45,16 +45,26 @@ class AddTaskDialog(QDialog):
         self.estimate.setRange(1, 1440)
         self.estimate.setValue(30)
         layout.addWidget(self.estimate)
+        self.error = QLabel()
+        self.error.setStyleSheet("color: #b42318;")
+        layout.addWidget(self.error)
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
 
+    def accept(self):
+        if not self.title_edit.text().strip():
+            self.error.setText("任务标题不能为空")
+            self.title_edit.setFocus()
+            return
+        super().accept()
+
 
 class FocusWindow(QMainWindow):
-    def __init__(self):
+    def __init__(self, store=None):
         super().__init__()
-        self.store = TaskStore()
+        self.store = store if store is not None else TaskStore()
         self.quitting = False
         self.setWindowTitle("FocusPilot · 今日待办")
         self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowStaysOnTopHint)
@@ -62,7 +72,7 @@ class FocusWindow(QMainWindow):
         self.setStyleSheet("""
             QMainWindow { background: #f7f8fc; }
             QLabel { color: #1c2333; }
-            QPushButton { padding: 7px 9px; border-radius: 5px; background: #e8edfb; }
+            QPushButton { color: #1c2333; padding: 7px 9px; border-radius: 5px; background: #e8edfb; }
             QPushButton:hover { background: #d7e3ff; }
             QFrame#taskCard { background: white; border: 1px solid #e2e6ef; border-radius: 9px; }
         """)
@@ -200,6 +210,11 @@ class FocusWindow(QMainWindow):
             sub = QLabel(f"DDL：{due_text}  ·  预计 {task.estimated_minutes} 分钟")
             sub.setStyleSheet("color: #64748b; font-size: 11px;")
             layout.addWidget(sub)
+            if task.snoozed_until and datetime.fromisoformat(task.snoozed_until) > now:
+                layout.addWidget(QLabel(f"提醒已推迟至 {task.snoozed_until[11:16]}"))
+            elif task.reminder_stage in ("soon", "overdue"):
+                layout.addWidget(QLabel("已逾期，需要重新安排" if level == 0 and task.due_at <= now.isoformat()
+                                        else "截止时间不足 30 分钟"))
             row = QHBoxLayout()
             done = QPushButton("✓ 完成")
             done.clicked.connect(lambda _, tid=task.id: self.complete_task(tid))
@@ -232,8 +247,31 @@ class FocusWindow(QMainWindow):
             self.refresh()
 
 
+def configure_app(app):
+    """Use a complete light palette instead of mixing dark OS colors with light cards."""
+    app.setStyle("Fusion")
+    palette = QPalette()
+    for role, color in {
+        QPalette.ColorRole.Window: "#f7f8fc",
+        QPalette.ColorRole.WindowText: "#1c2333",
+        QPalette.ColorRole.Base: "#ffffff",
+        QPalette.ColorRole.AlternateBase: "#edf1f8",
+        QPalette.ColorRole.Text: "#1c2333",
+        QPalette.ColorRole.Button: "#e8edfb",
+        QPalette.ColorRole.ButtonText: "#1c2333",
+        QPalette.ColorRole.Highlight: "#3267d6",
+        QPalette.ColorRole.HighlightedText: "#ffffff",
+        QPalette.ColorRole.ToolTipBase: "#ffffff",
+        QPalette.ColorRole.ToolTipText: "#1c2333",
+        QPalette.ColorRole.PlaceholderText: "#64748b",
+    }.items():
+        palette.setColor(role, QColor(color))
+    app.setPalette(palette)
+
+
 def main():
     app = QApplication([])
+    configure_app(app)
     app.setQuitOnLastWindowClosed(False)
     panel = FocusWindow()
     panel.show()
