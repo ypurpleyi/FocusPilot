@@ -3,18 +3,21 @@
 from datetime import datetime
 import argparse
 import sys
+import sqlite3
+import math
 
-from PySide6.QtCore import Qt, QDateTime, QTimer
+from PySide6.QtCore import Qt, QDateTime, QTime, QTimer
 from PySide6.QtGui import QAction, QColor, QPalette, QSessionManager
 from PySide6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QDateTimeEdit, QDialog,
     QDialogButtonBox, QFrame, QHBoxLayout, QLabel, QLineEdit, QMainWindow,
     QMenu, QMessageBox, QPushButton, QScrollArea, QSpinBox, QStyle,
-    QSystemTrayIcon, QVBoxLayout, QWidget,
+    QSystemTrayIcon, QTimeEdit, QVBoxLayout, QWidget,
 )
 
 from .core import reminder_to_send, sort_tasks, urgency
 from .storage import TaskStore, default_db_path
+from .reminders import ReminderSettings, cooldown_remaining, delivery_policy, quiet_reason
 
 
 class AddTaskDialog(QDialog):
@@ -63,6 +66,85 @@ class AddTaskDialog(QDialog):
         super().accept()
 
 
+class ReminderSettingsDialog(QDialog):
+    def __init__(self, settings, save_callback, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("提醒设置")
+        self.setMinimumWidth(430)
+        self.save_callback = save_callback
+        layout = QVBoxLayout(self)
+        layout.addWidget(QLabel("普通任务提醒方式"))
+        self.mode = QComboBox()
+        for label, value in [("仅面板（不主动打扰）", "panel"), ("标准（横幅，逾期恢复面板）", "standard"),
+                             ("强提醒（横幅、恢复面板、提示音）", "strong")]:
+            self.mode.addItem(label, value)
+        self.mode.setCurrentIndex(self.mode.findData(settings.mode))
+        layout.addWidget(self.mode)
+        self.work_enabled = QCheckBox("仅在工作时段提醒普通任务（支持跨午夜）")
+        self.work_enabled.setChecked(settings.work_enabled)
+        layout.addWidget(self.work_enabled)
+        hours = QHBoxLayout()
+        self.work_start = QTimeEdit(QTime.fromString(settings.work_start, "HH:mm"))
+        self.work_end = QTimeEdit(QTime.fromString(settings.work_end, "HH:mm"))
+        for edit in (self.work_start, self.work_end):
+            edit.setDisplayFormat("HH:mm")
+            edit.setEnabled(settings.work_enabled)
+            self.work_enabled.toggled.connect(edit.setEnabled)
+        hours.addWidget(self.work_start)
+        hours.addWidget(QLabel("至"))
+        hours.addWidget(self.work_end)
+        layout.addLayout(hours)
+        self.quiet_enabled = QCheckBox("免打扰至指定时间")
+        active_quiet = bool(settings.quiet_until and datetime.fromisoformat(settings.quiet_until) > datetime.now())
+        self.quiet_enabled.setChecked(active_quiet)
+        layout.addWidget(self.quiet_enabled)
+        quiet_time = (QDateTime.fromString(settings.quiet_until, Qt.DateFormat.ISODate)
+                      if active_quiet else QDateTime.currentDateTime().addSecs(3600))
+        self.quiet_until = QDateTimeEdit(quiet_time)
+        self.quiet_until.setDisplayFormat("yyyy-MM-dd HH:mm")
+        self.quiet_until.setCalendarPopup(True)
+        self.quiet_until.setEnabled(active_quiet)
+        self.quiet_enabled.toggled.connect(self.quiet_until.setEnabled)
+        layout.addWidget(self.quiet_until)
+        self.overdue_override = QCheckBox("逾期任务始终强提醒（可打断免打扰）")
+        self.overdue_override.setChecked(settings.overdue_override)
+        layout.addWidget(self.overdue_override)
+        interval_row = QHBoxLayout()
+        interval_row.addWidget(QLabel("通知最小间隔（分钟）"))
+        self.cooldown = QSpinBox()
+        self.cooldown.setRange(1, 60)
+        self.cooldown.setValue(settings.cooldown_minutes)
+        interval_row.addWidget(self.cooldown)
+        layout.addLayout(interval_row)
+        note = QLabel("逾期强提醒同样遵守通知间隔与任务的稍后提醒。静默期间任务仍在面板显示；恢复后只汇总当前阶段。提示音取决于系统音量。")
+        note.setWordWrap(True)
+        layout.addWidget(note)
+        self.error = QLabel()
+        self.error.setWordWrap(True)
+        self.error.setStyleSheet("color: #b42318;")
+        layout.addWidget(self.error)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+    def accept(self):
+        try:
+            quiet = self.quiet_until.dateTime().toString("yyyy-MM-ddTHH:mm:ss") if self.quiet_enabled.isChecked() else None
+            if quiet and datetime.fromisoformat(quiet) <= datetime.now():
+                raise ValueError("免打扰结束时间必须晚于当前时间")
+            settings = ReminderSettings(mode=self.mode.currentData(), work_enabled=self.work_enabled.isChecked(),
+                                        work_start=self.work_start.time().toString("HH:mm"),
+                                        work_end=self.work_end.time().toString("HH:mm"), quiet_until=quiet,
+                                        overdue_override=self.overdue_override.isChecked(),
+                                        cooldown_minutes=self.cooldown.value())
+            self.save_callback(settings)
+        except (ValueError, sqlite3.Error, OSError) as error:
+            self.error.setText(f"无法保存：{error}")
+            return
+        super().accept()
+
+
 class FocusWindow(QMainWindow):
     def __init__(self, store=None):
         super().__init__()
@@ -73,6 +155,15 @@ class FocusWindow(QMainWindow):
         self.startup_manager = None
         self._startup_enabled = False
         self._cleaned_up = False
+        self.settings_dialog = None
+        self.reminder_error = ""
+        try:
+            self.reminder_settings = self.store.load_reminder_settings()
+            self.last_alert = self.store.load_last_alert()
+        except (ValueError, sqlite3.Error) as error:
+            self.reminder_settings = ReminderSettings(mode="panel", overdue_override=False)
+            self.last_alert = None
+            self.reminder_error = f"提醒配置读取失败，暂仅面板显示；请重新保存设置。{error}"
         self.setWindowTitle("FocusPilot · 今日待办")
         self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowStaysOnTopHint)
         self.resize(390, 580)
@@ -95,6 +186,9 @@ class FocusWindow(QMainWindow):
         add_button = QPushButton("＋ 添加任务")
         add_button.clicked.connect(self.add_task)
         actions.addWidget(add_button)
+        settings_button = QPushButton("提醒设置")
+        settings_button.clicked.connect(self.show_reminder_settings)
+        actions.addWidget(settings_button)
         refresh_button = QPushButton("刷新")
         refresh_button.clicked.connect(self.refresh)
         actions.addWidget(refresh_button)
@@ -107,6 +201,10 @@ class FocusWindow(QMainWindow):
         self.task_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         self.scroll.setWidget(self.list_container)
         container.addWidget(self.scroll)
+        self.reminder_status = QLabel()
+        self.reminder_status.setWordWrap(True)
+        self.reminder_status.setStyleSheet("color: #64748b; font-size: 11px;")
+        container.addWidget(self.reminder_status)
         self.startup_check = QCheckBox("登录 Windows 后在托盘启动（可选）")
         self.startup_check.setEnabled(False)
         self.startup_check.toggled.connect(self.set_startup_enabled)
@@ -173,6 +271,33 @@ class FocusWindow(QMainWindow):
             self.hotkey.close()
         if self.capture_dialog is not None:
             self.capture_dialog.reject()
+        if self.settings_dialog is not None:
+            self.settings_dialog.reject()
+
+    def apply_reminder_settings(self, settings):
+        self.store.save_reminder_settings(settings, reset_alert_clock=bool(self.reminder_error))
+        self.reminder_settings = settings
+        if self.reminder_error:
+            self.last_alert = None
+        self.reminder_error = ""
+        self.refresh()
+
+    def show_reminder_settings(self):
+        if self.quitting:
+            return
+        if self.settings_dialog is not None:
+            self.settings_dialog.raise_()
+            self.settings_dialog.activateWindow()
+            return
+        dialog = ReminderSettingsDialog(self.reminder_settings, self.apply_reminder_settings, self)
+        self.settings_dialog = dialog
+        try:
+            accepted = dialog.exec() == QDialog.DialogCode.Accepted
+        finally:
+            self.settings_dialog = None
+            dialog.deleteLater()
+        if accepted:
+            self.tick()
 
     def enable_desktop(self, app, startup_manager=None, hotkey=None):
         from .desktop import NativeHotkeyFilter
@@ -209,6 +334,10 @@ class FocusWindow(QMainWindow):
     def quick_capture(self):
         if not self.quitting:
             self.show_panel()
+            if self.settings_dialog is not None:
+                self.settings_dialog.raise_()
+                self.settings_dialog.activateWindow()
+                return
             self.add_task()
 
     def closeEvent(self, event):
@@ -266,8 +395,16 @@ class FocusWindow(QMainWindow):
             if widget:
                 widget.deleteLater()
 
-    def refresh(self):
-        now = datetime.now()
+    def refresh(self, now=None):
+        now = now or datetime.now()
+        mode = {"panel": "仅面板", "standard": "标准提醒", "strong": "强提醒"}[self.reminder_settings.mode]
+        reason = quiet_reason(self.reminder_settings, now)
+        override = "逾期仍强提醒" if self.reminder_settings.overdue_override else "逾期遵循上述设置"
+        remaining = cooldown_remaining(now, self.last_alert, self.reminder_settings.cooldown_minutes)
+        text = f"{mode} · {reason or '当前可提醒'} · {override}"
+        if remaining.total_seconds() > 0:
+            text += f" · 通知间隔剩余 {math.ceil(remaining.total_seconds())} 秒"
+        self.reminder_status.setText(self.reminder_error or text)
         tasks = sort_tasks(self.store.list_tasks(), now)
         self._clear_cards()
         self.summary.setText(f"待完成 {len(tasks)} 项 · 紧急 {sum(urgency(t, now) == 0 for t in tasks)} 项")
@@ -293,6 +430,8 @@ class FocusWindow(QMainWindow):
             elif task.reminder_stage in ("soon", "overdue"):
                 layout.addWidget(QLabel("已逾期，需要重新安排" if task.due_at and datetime.fromisoformat(task.due_at) <= now
                                         else "截止时间不足 30 分钟"))
+            elif task.due_at and datetime.fromisoformat(task.due_at) <= now:
+                layout.addWidget(QLabel("已逾期，等待提醒时段或通知间隔结束"))
             row = QHBoxLayout()
             done = QPushButton("✓ 完成")
             done.clicked.connect(lambda _, tid=task.id: self.complete_task(tid))
@@ -303,30 +442,47 @@ class FocusWindow(QMainWindow):
             layout.addLayout(row)
             self.task_layout.addWidget(card)
 
-    def tick(self):
+    def tick(self, now=None):
         if self.quitting:
             return
-        now = datetime.now()
-        changes = []
+        now = now or datetime.now()
+        panel_updates = []
+        alerts = []
+        ready = not cooldown_remaining(now, self.last_alert, self.reminder_settings.cooldown_minutes)
         for task in self.store.list_tasks():
             kind = reminder_to_send(task, now)
             if not kind:
                 continue
-            self.store.mark_reminded(task.id, kind)
-            changes.append((task, kind))
-        if changes:
-            self.refresh()
+            policy = delivery_policy(self.reminder_settings, now, kind)
+            if not policy.allowed:
+                continue
+            if not (policy.banner or policy.reveal or policy.sound):
+                panel_updates.append((task.id, kind))
+            elif ready:
+                alerts.append((task, kind, policy))
+        updates = panel_updates + [(task.id, kind) for task, kind, _ in alerts]
+        if updates:
+            try:
+                self.store.record_reminders(updates, alert_at=now if alerts else None)
+            except sqlite3.Error as error:
+                self.refresh(now)
+                self.reminder_status.setText(f"提醒状态保存失败，将在下次检查重试：{error}")
+                return
+        if alerts:
+            self.last_alert = now
+            changes = [(task, kind) for task, kind, _ in alerts]
             lines = [f"{task.title}：{'已逾期' if kind == 'overdue' else '截止时间不足 30 分钟'}"
                      for task, kind in changes[:3]]
             if len(changes) > 3:
                 lines.append(f"另有 {len(changes) - 3} 项，请打开面板查看")
-            if self.tray.isVisible() and QSystemTrayIcon.supportsMessages():
+            if any(policy.banner for _, _, policy in alerts) and self.tray.isVisible() and QSystemTrayIcon.supportsMessages():
                 self.tray.showMessage(f"FocusPilot · {len(changes)} 项任务提醒", "\n".join(lines))
             # The visual panel remains the fallback when OS notifications are suppressed.
-            if any(kind == "overdue" for _, kind in changes):
+            if any(policy.reveal for _, _, policy in alerts):
                 self.show_panel()
-        else:
-            self.refresh()
+            if any(policy.sound for _, _, policy in alerts):
+                QApplication.beep()
+        self.refresh(now)
 
 
 def configure_app(app):

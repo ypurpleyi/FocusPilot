@@ -3,12 +3,15 @@
 import os
 import sqlite3
 import uuid
+import json
 from contextlib import contextmanager
+from dataclasses import asdict
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
 from .core import Task
+from .reminders import ReminderSettings
 
 
 def default_db_path() -> Path:
@@ -32,6 +35,7 @@ class TaskStore:
                 snoozed_until TEXT,
                 reminder_stage TEXT NOT NULL DEFAULT 'none'
             )""")
+            c.execute("CREATE TABLE IF NOT EXISTS app_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
 
     @contextmanager
     def _connect(self):
@@ -103,3 +107,48 @@ class TaskStore:
         with self._connect() as c:
             c.execute("UPDATE tasks SET reminder_stage=?, snoozed_until=NULL WHERE id=?",
                       (stage, task_id))
+
+    def _setting_value(self, key: str) -> str | None:
+        with self._connect() as connection:
+            row = connection.execute("SELECT value FROM app_settings WHERE key=?", (key,)).fetchone()
+        return row["value"] if row else None
+
+    def load_reminder_settings(self) -> ReminderSettings:
+        value = self._setting_value("reminder_settings")
+        if value is None:
+            return ReminderSettings()
+        data = json.loads(value)
+        if not isinstance(data, dict):
+            raise ValueError("保存的提醒设置不是有效对象")
+        try:
+            return ReminderSettings(**data)
+        except TypeError as error:
+            raise ValueError("保存的提醒设置包含未知字段") from error
+
+    def save_reminder_settings(self, settings: ReminderSettings, *, reset_alert_clock: bool = False) -> None:
+        with self._connect() as connection:
+            connection.execute("INSERT OR REPLACE INTO app_settings VALUES ('reminder_settings', ?)",
+                               (json.dumps(asdict(settings), ensure_ascii=False),))
+            if reset_alert_clock:
+                connection.execute("DELETE FROM app_settings WHERE key='last_alert_at'")
+
+    def load_last_alert(self) -> datetime | None:
+        value = self._setting_value("last_alert_at")
+        if value is None:
+            return None
+        result = datetime.fromisoformat(value)
+        if result.tzinfo is not None:
+            raise ValueError("保存的通知时间必须为本地时间")
+        return result
+
+    def record_reminders(self, reminders: list[tuple[str, str]], alert_at: datetime | None = None) -> None:
+        if any(stage not in ("soon", "overdue") for _, stage in reminders):
+            raise ValueError("提醒阶段无效")
+        if alert_at is not None and alert_at.tzinfo is not None:
+            raise ValueError("通知时间必须为本地时间")
+        with self._connect() as connection:
+            connection.executemany("UPDATE tasks SET reminder_stage=?, snoozed_until=NULL WHERE id=? AND status='pending'",
+                                   [(stage, task_id) for task_id, stage in reminders])
+            if alert_at is not None:
+                connection.execute("INSERT OR REPLACE INTO app_settings VALUES ('last_alert_at', ?)",
+                                   (alert_at.isoformat(),))

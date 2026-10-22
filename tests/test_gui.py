@@ -64,7 +64,8 @@ def test_light_palette_remains_readable_under_dark_system_theme(app):
 
 
 @pytest.fixture
-def panel(app, tmp_path):
+def panel(app, tmp_path, monkeypatch):
+    monkeypatch.setattr(QApplication, "beep", lambda: None)
     window = FocusWindow(TaskStore(tmp_path / "workflow.sqlite3"))
     window.timer.stop()
     yield window
