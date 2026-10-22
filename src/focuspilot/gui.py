@@ -1,9 +1,11 @@
 """Simple always-visible Windows panel. Qt GUI is intentionally optional for unit tests."""
 
 from datetime import datetime
+import argparse
+import sys
 
 from PySide6.QtCore import Qt, QDateTime, QTimer
-from PySide6.QtGui import QAction, QColor, QPalette
+from PySide6.QtGui import QAction, QColor, QPalette, QSessionManager
 from PySide6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QDateTimeEdit, QDialog,
     QDialogButtonBox, QFrame, QHBoxLayout, QLabel, QLineEdit, QMainWindow,
@@ -12,7 +14,7 @@ from PySide6.QtWidgets import (
 )
 
 from .core import reminder_to_send, sort_tasks, urgency
-from .storage import TaskStore
+from .storage import TaskStore, default_db_path
 
 
 class AddTaskDialog(QDialog):
@@ -66,6 +68,11 @@ class FocusWindow(QMainWindow):
         super().__init__()
         self.store = store if store is not None else TaskStore()
         self.quitting = False
+        self.capture_dialog = None
+        self.hotkey = None
+        self.startup_manager = None
+        self._startup_enabled = False
+        self._cleaned_up = False
         self.setWindowTitle("FocusPilot · 今日待办")
         self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowStaysOnTopHint)
         self.resize(390, 580)
@@ -100,6 +107,13 @@ class FocusWindow(QMainWindow):
         self.task_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         self.scroll.setWidget(self.list_container)
         container.addWidget(self.scroll)
+        self.startup_check = QCheckBox("登录 Windows 后在托盘启动（可选）")
+        self.startup_check.setEnabled(False)
+        self.startup_check.toggled.connect(self.set_startup_enabled)
+        container.addWidget(self.startup_check)
+        self.desktop_status = QLabel()
+        self.desktop_status.setWordWrap(True)
+        container.addWidget(self.desktop_status)
         self.bottom = QLabel("提醒将自动运行；关闭窗口后仍保留在系统托盘。")
         self.bottom.setWordWrap(True)
         self.bottom.setStyleSheet("color: #64748b; font-size: 11px;")
@@ -114,7 +128,9 @@ class FocusWindow(QMainWindow):
         show_action.triggered.connect(self.show_panel)
         menu.addAction(show_action)
         quit_action = QAction("退出 FocusPilot", self)
+        quit_action.setShortcut("Ctrl+Q")
         quit_action.triggered.connect(self.exit_app)
+        self.addAction(quit_action)
         menu.addAction(quit_action)
         self.tray.setContextMenu(menu)
         self.tray.activated.connect(self.on_tray_activated)
@@ -143,13 +159,61 @@ class FocusWindow(QMainWindow):
             self.show_panel()
 
     def exit_app(self):
+        self.prepare_shutdown()
+        QApplication.instance().quit()
+
+    def prepare_shutdown(self):
+        if self._cleaned_up:
+            return
+        self._cleaned_up = True
         self.quitting = True
         self.timer.stop()
         self.tray.hide()
-        QApplication.instance().quit()
+        if self.hotkey is not None:
+            self.hotkey.close()
+        if self.capture_dialog is not None:
+            self.capture_dialog.reject()
+
+    def enable_desktop(self, app, startup_manager=None, hotkey=None):
+        from .desktop import NativeHotkeyFilter
+        from .windows import StartupManager
+
+        try:
+            self.startup_manager = startup_manager if startup_manager is not None else StartupManager()
+            self._startup_enabled = self.startup_manager.is_enabled()
+            self.startup_check.blockSignals(True)
+            self.startup_check.setChecked(self._startup_enabled)
+            self.startup_check.blockSignals(False)
+            self.startup_check.setEnabled(self.startup_manager.supported)
+        except (OSError, ValueError) as error:
+            self.startup_check.setEnabled(False)
+            self.startup_check.setToolTip(f"无法读取登录启动配置：{error}")
+        self.hotkey = hotkey if hotkey is not None else NativeHotkeyFilter(app, self.quick_capture)
+        if self.hotkey.start():
+            self.desktop_status.setText("Ctrl+Alt+N 快速录入 · Ctrl+Q 退出")
+        else:
+            self.desktop_status.setText(self.hotkey.registration.error)
+
+    def set_startup_enabled(self, enabled):
+        if self.startup_manager is None:
+            return
+        try:
+            self.startup_manager.set_enabled(enabled)
+            self._startup_enabled = enabled
+        except (OSError, ValueError) as error:
+            self.startup_check.blockSignals(True)
+            self.startup_check.setChecked(self._startup_enabled)
+            self.startup_check.blockSignals(False)
+            QMessageBox.warning(self, "无法设置登录自启", str(error))
+
+    def quick_capture(self):
+        if not self.quitting:
+            self.show_panel()
+            self.add_task()
 
     def closeEvent(self, event):
-        if not self.quitting and QSystemTrayIcon.isSystemTrayAvailable() and self.tray.isVisible():
+        if (not self.quitting and not QApplication.instance().isSavingSession()
+                and QSystemTrayIcon.isSystemTrayAvailable() and self.tray.isVisible()):
             self.hide()
             event.ignore()
         else:
@@ -157,8 +221,20 @@ class FocusWindow(QMainWindow):
             self.exit_app()
 
     def add_task(self):
+        if self.quitting:
+            return
+        if self.capture_dialog is not None:
+            self.capture_dialog.raise_()
+            self.capture_dialog.activateWindow()
+            return
         dialog = AddTaskDialog(self)
-        if dialog.exec() != QDialog.DialogCode.Accepted:
+        self.capture_dialog = dialog
+        try:
+            result = dialog.exec()
+        finally:
+            self.capture_dialog = None
+            dialog.deleteLater()
+        if result != QDialog.DialogCode.Accepted:
             return
         try:
             due_at = (
@@ -275,10 +351,37 @@ def configure_app(app):
     app.setPalette(palette)
 
 
-def main():
-    app = QApplication([])
+def main(argv=None):
+    from .desktop import InstanceGuard
+
+    parser = argparse.ArgumentParser(description="FocusPilot desktop task panel")
+    parser.add_argument("--background", action="store_true", help="Start in tray when available")
+    options = parser.parse_args(argv)
+    app = QApplication([sys.argv[0]])
     configure_app(app)
     app.setQuitOnLastWindowClosed(False)
+    guard = InstanceGuard(default_db_path())
+    try:
+        if not guard.acquire():
+            return 0
+    except OSError as error:
+        QMessageBox.critical(None, "无法启动 FocusPilot", str(error))
+        return 1
     panel = FocusWindow()
-    panel.show()
-    return app.exec()
+    panel.enable_desktop(app)
+    guard.activated.connect(panel.show_panel)
+    app.aboutToQuit.connect(panel.prepare_shutdown)
+    app.aboutToQuit.connect(guard.close)
+
+    def end_session(manager):
+        manager.setRestartHint(QSessionManager.RestartHint.RestartNever)
+        panel.prepare_shutdown()
+
+    app.commitDataRequest.connect(end_session)
+    if not options.background or not QSystemTrayIcon.isSystemTrayAvailable():
+        panel.show()
+    try:
+        return app.exec()
+    finally:
+        panel.prepare_shutdown()
+        guard.close()

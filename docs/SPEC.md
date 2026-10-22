@@ -45,3 +45,15 @@ A5. 真实 Windows 验收：禁用系统通知时面板仍显示任务；提醒�
 返回：结构化每日计划，包含任务 ID、建议排序、原因、风险提示、缺失字段；不要凭空补全截止时间。
 
 Pi RPC 客户端必须区分 `prompt` 接受确认与 `agent_settled` 执行完成；按 JSONL 解析事件且不在桌面主线程中阻塞等待。
+
+## T04 默认方案（2026-10-22）
+
+- 使用 Windows RegisterHotKey 注册 Ctrl+Alt+N，并设置 MOD_NOREPEAT；通过 Qt 原生事件过滤器处理 WM_HOTKEY，排队打开现有录入表单。已打开表单时只恢复该表单，不重复创建。
+- 注册冲突不抢占其他应用的热键，不影响普通按钮录入；底部显示原因。退出和会话结束时释放资源；正常隐藏保留热键。Ctrl+Q 是主窗口内的退出快捷键。
+- 登录自启默认关闭，仅在用户勾选时写入 HKCU 的 Run/FocusPilot 值；使用绝对 pythonw 路径和 `-m focuspilot --background`，正确引用含空格路径，并检查260字符限制。取消只删除本应用的值。读写失败可见且不将界面错误地保留为启用。
+- `--background` 优先驻留托盘，托盘不可用时显示主窗口。属于用户登录后启动，不承诺登录前运行或固定启动时刻。
+- 同一数据库路径通过 QLockFile 限制单实例，QLocalServer 仅允许当前用户访问。重复启动通过本地 IPC 请求恢复已有窗口，并等待确认后退出；崩溃后可恢复锁，不产生多实例重复提醒。
+- Qt 会话结束请求设置 RestartNever 并清理计时器、表单、托盘、热键；不阻止系统注销。所有写入操作即时提交，异常进程终止后的数据和锁恢复由跨进程测试覆盖。
+- 不自动启用自启，不在开发验收中注销或重启用户电脑。真实登录/注销与OS通知策略的最终验收独立记录。
+
+实现依据：[RegisterHotKey](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-registerhotkey)、[Run registry keys](https://learn.microsoft.com/windows/win32/setupapi/run-and-runonce-registry-keys)、[Qt native event filter](https://doc.qt.io/qtforpython-6/PySide6/QtCore/QAbstractNativeEventFilter.html)。

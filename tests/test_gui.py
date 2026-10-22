@@ -120,3 +120,53 @@ def test_simultaneous_reminders_are_summarized_without_losing_tasks(panel, monke
     assert all(task.reminder_stage == "overdue" for task in panel.store.list_tasks())
     panel.tick()
     assert len(messages) == 1
+
+
+def test_session_shutdown_does_not_hide_in_tray(panel, app, monkeypatch):
+    monkeypatch.setattr(QSystemTrayIcon, "isSystemTrayAvailable", lambda: True)
+    monkeypatch.setattr(app, "isSavingSession", lambda: True)
+    monkeypatch.setattr(app, "quit", lambda: None)
+    panel.tray.show()
+    event = QCloseEvent()
+    panel.closeEvent(event)
+    assert event.isAccepted()
+    assert panel.quitting
+    assert not panel.tray.isVisible()
+
+
+def test_repeated_capture_uses_one_dialog(panel, monkeypatch):
+    calls = []
+
+    def fake_exec(dialog):
+        calls.append(dialog)
+        panel.add_task()
+        return QDialog.DialogCode.Rejected
+
+    monkeypatch.setattr(AddTaskDialog, "exec", fake_exec)
+    panel.add_task()
+    assert len(calls) == 1
+    assert panel.capture_dialog is None
+
+
+def test_startup_permission_error_restores_checkbox(panel, app, monkeypatch):
+    from types import SimpleNamespace
+    from focuspilot.gui import QMessageBox
+
+    def deny(enabled):
+        raise PermissionError("Denied")
+
+    startup = SimpleNamespace(supported=True, is_enabled=lambda: False, set_enabled=deny)
+    releases = []
+    hotkey = SimpleNamespace(start=lambda: False, registration=SimpleNamespace(error="Conflict"),
+                             close=lambda: releases.append(True))
+    warnings = []
+    monkeypatch.setattr(QMessageBox, "warning", lambda *args: warnings.append(args))
+    panel.enable_desktop(app, startup_manager=startup, hotkey=hotkey)
+    assert not panel.startup_check.isChecked()
+    assert panel.desktop_status.text() == "Conflict"
+    panel.startup_check.setChecked(True)
+    assert not panel.startup_check.isChecked()
+    assert warnings
+    panel.prepare_shutdown()
+    panel.prepare_shutdown()
+    assert releases == [True]
