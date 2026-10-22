@@ -3,6 +3,7 @@
 import os
 import sqlite3
 import uuid
+from contextlib import contextmanager
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
@@ -32,10 +33,15 @@ class TaskStore:
                 reminder_stage TEXT NOT NULL DEFAULT 'none'
             )""")
 
+    @contextmanager
     def _connect(self):
         c = sqlite3.connect(self.path)
         c.row_factory = sqlite3.Row
-        return c
+        try:
+            with c:
+                yield c
+        finally:
+            c.close()
 
     def create(
         self,

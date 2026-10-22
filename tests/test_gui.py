@@ -6,7 +6,8 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import pytest
 from PySide6.QtGui import QColor, QPalette
-from PySide6.QtWidgets import QApplication, QDialog, QLabel
+from PySide6.QtGui import QCloseEvent
+from PySide6.QtWidgets import QApplication, QDialog, QLabel, QSystemTrayIcon
 
 from focuspilot.gui import AddTaskDialog, FocusWindow
 from focuspilot.storage import TaskStore
@@ -60,3 +61,62 @@ def test_light_palette_remains_readable_under_dark_system_theme(app):
     assert palette.color(QPalette.ColorRole.Window).lightness() > 220
     assert palette.color(QPalette.ColorRole.WindowText).lightness() < 80
     assert palette.color(QPalette.ColorRole.ButtonText).lightness() < 80
+
+
+@pytest.fixture
+def panel(app, tmp_path):
+    window = FocusWindow(TaskStore(tmp_path / "workflow.sqlite3"))
+    window.timer.stop()
+    yield window
+    window.tray.hide()
+    window.deleteLater()
+    app.processEvents()
+
+
+@pytest.mark.parametrize("available,visible,should_hide", [
+    (True, True, True), (True, False, False), (False, False, False),
+])
+def test_close_only_hides_when_tray_can_restore(panel, app, monkeypatch, available, visible, should_hide):
+    monkeypatch.setattr(QSystemTrayIcon, "isSystemTrayAvailable", lambda: available)
+    panel.tray.setVisible(visible)
+    quit_calls = []
+    monkeypatch.setattr(app, "quit", lambda: quit_calls.append(True))
+    event = QCloseEvent()
+    panel.closeEvent(event)
+    assert event.isAccepted() is not should_hide
+    assert bool(quit_calls) is not should_hide
+
+
+def test_tray_double_click_and_notification_click_restore_panel(panel, app):
+    panel.hide()
+    panel.tray.activated.emit(QSystemTrayIcon.ActivationReason.DoubleClick)
+    assert panel.isVisible()
+    panel.hide()
+    panel.tray.messageClicked.emit()
+    assert panel.isVisible()
+
+
+def test_explicit_exit_stops_background_timer(panel, app, monkeypatch):
+    quit_calls = []
+    monkeypatch.setattr(app, "quit", lambda: quit_calls.append(True))
+    panel.timer.start(30_000)
+    panel.exit_app()
+    assert panel.quitting
+    assert not panel.tray.isVisible()
+    assert not panel.timer.isActive()
+    assert quit_calls == [True]
+
+
+def test_simultaneous_reminders_are_summarized_without_losing_tasks(panel, monkeypatch):
+    for index in range(5):
+        panel.store.create(f"Batch {index}", "2020-01-01T10:00:00")
+    messages = []
+    monkeypatch.setattr(QSystemTrayIcon, "supportsMessages", lambda: True)
+    monkeypatch.setattr(panel.tray, "showMessage", lambda *args: messages.append(args))
+    panel.tick()
+    assert len(messages) == 1
+    assert "5" in messages[0][0]
+    assert "另有 2 项" in messages[0][1]
+    assert all(task.reminder_stage == "overdue" for task in panel.store.list_tasks())
+    panel.tick()
+    assert len(messages) == 1

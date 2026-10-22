@@ -30,3 +30,31 @@ def test_snooze_and_reminder_state_are_durable(tmp_path):
     assert reminder_to_send(TaskStore(path).get(created.id), now) is None
     store.mark_reminded(created.id, "soon")
     assert reminder_to_send(TaskStore(path).get(created.id), now) is None
+
+
+def test_store_closes_database_handles_after_operations(tmp_path, monkeypatch):
+    import sqlite3
+
+    original_connect = sqlite3.connect
+    connections = []
+
+    def track_connection(*args, **kwargs):
+        connection = original_connect(*args, **kwargs)
+        connections.append(connection)
+        return connection
+
+    monkeypatch.setattr(sqlite3, "connect", track_connection)
+    store = TaskStore(tmp_path / "handles.sqlite3")
+    task = store.create("Handle lifetime", "2026-10-22T10:00:00")
+    store.list_tasks()
+    store.get(task.id)
+    store.snooze(task.id)
+    store.mark_reminded(task.id, "overdue")
+    store.complete(task.id)
+    try:
+        for connection in connections:
+            with pytest.raises(sqlite3.ProgrammingError, match="closed"):
+                connection.execute("SELECT 1")
+    finally:
+        for connection in connections:
+            connection.close()

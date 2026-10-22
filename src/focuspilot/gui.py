@@ -118,6 +118,7 @@ class FocusWindow(QMainWindow):
         menu.addAction(quit_action)
         self.tray.setContextMenu(menu)
         self.tray.activated.connect(self.on_tray_activated)
+        self.tray.messageClicked.connect(self.show_panel)
         self.tray.show()
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.tick)
@@ -143,16 +144,17 @@ class FocusWindow(QMainWindow):
 
     def exit_app(self):
         self.quitting = True
+        self.timer.stop()
         self.tray.hide()
         QApplication.instance().quit()
 
     def closeEvent(self, event):
-        if not self.quitting and QSystemTrayIcon.isSystemTrayAvailable():
+        if not self.quitting and QSystemTrayIcon.isSystemTrayAvailable() and self.tray.isVisible():
             self.hide()
             event.ignore()
         else:
             event.accept()
-            QApplication.instance().quit()
+            self.exit_app()
 
     def add_task(self):
         dialog = AddTaskDialog(self)
@@ -213,7 +215,7 @@ class FocusWindow(QMainWindow):
             if task.snoozed_until and datetime.fromisoformat(task.snoozed_until) > now:
                 layout.addWidget(QLabel(f"提醒已推迟至 {task.snoozed_until[11:16]}"))
             elif task.reminder_stage in ("soon", "overdue"):
-                layout.addWidget(QLabel("已逾期，需要重新安排" if level == 0 and task.due_at <= now.isoformat()
+                layout.addWidget(QLabel("已逾期，需要重新安排" if task.due_at and datetime.fromisoformat(task.due_at) <= now
                                         else "截止时间不足 30 分钟"))
             row = QHBoxLayout()
             done = QPushButton("✓ 完成")
@@ -226,6 +228,8 @@ class FocusWindow(QMainWindow):
             self.task_layout.addWidget(card)
 
     def tick(self):
+        if self.quitting:
+            return
         now = datetime.now()
         changes = []
         for task in self.store.list_tasks():
@@ -236,10 +240,12 @@ class FocusWindow(QMainWindow):
             changes.append((task, kind))
         if changes:
             self.refresh()
-            for task, kind in changes[:3]:
-                message = ("已逾期，需要重新安排" if kind == "overdue" else "截止时间不足 30 分钟")
-                if self.tray.isVisible() and QSystemTrayIcon.supportsMessages():
-                    self.tray.showMessage("FocusPilot · 任务提醒", f"{task.title}\n{message}")
+            lines = [f"{task.title}：{'已逾期' if kind == 'overdue' else '截止时间不足 30 分钟'}"
+                     for task, kind in changes[:3]]
+            if len(changes) > 3:
+                lines.append(f"另有 {len(changes) - 3} 项，请打开面板查看")
+            if self.tray.isVisible() and QSystemTrayIcon.supportsMessages():
+                self.tray.showMessage(f"FocusPilot · {len(changes)} 项任务提醒", "\n".join(lines))
             # The visual panel remains the fallback when OS notifications are suppressed.
             if any(kind == "overdue" for _, kind in changes):
                 self.show_panel()
