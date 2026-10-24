@@ -1,0 +1,32 @@
+{
+  "date": "2026-10-24",
+  "scope": "offline_staged_Node_Pi_AppContainer_versions_files_RPC_state",
+  "profile": "FocusPilot.Prototype.2351b802f51748f6beb3d26d38781dd4",
+  "node_version": "v24.15.0",
+  "pi_version": "1.4.0",
+  "copied_pi_files": 15029,
+  "copied_bytes_including_node": 203537669,
+  "copy_hashes_verified": true,
+  "all_four_processes_appcontainer_token_verified": true,
+  "network_capability_count": 0,
+  "explicit_inherited_stdio_handles_per_process": 3,
+  "all_four_jobs_empty": true,
+  "node_file_checks": {
+    "allowed_read": true,
+    "runtime_write_denied": true,
+    "runtime_create_denied": true,
+    "ungranted_read_denied": true,
+    "ungranted_write_denied": true,
+    "workspace_write": true
+  },
+  "rpc_idle_empty_state_verified": true,
+  "source_node_cli_fingerprints_unchanged": true,
+  "four_source_objects_DACL_unchanged": true,
+  "profile_deleted": true,
+  "runtime_and_work_deleted": true,
+  "model_called": false,
+  "mcp_enabled": false,
+  "credentials_read": false,
+  "production_data_used": false,
+  "production_ready": false
+}

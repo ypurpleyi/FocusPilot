@@ -1,0 +1,33 @@
+{
+  "production_data_used": false,
+  "formal_database_written": false,
+  "sandbox_verified": true,
+  "model_connections": 2,
+  "mcp_calls": 1,
+  "draft_count": 2,
+  "duplicate_checks": 1,
+  "channels": [
+    {
+      "identity_verified": true,
+      "connections": null,
+      "bytes_to_model": null,
+      "bytes_from_model": null,
+      "error": null
+    },
+    {
+      "identity_verified": true,
+      "connections": 2,
+      "bytes_to_model": 13945,
+      "bytes_from_model": 85929,
+      "error": null
+    }
+  ],
+  "database_unchanged": true,
+  "duplicate_candidate_count": 1,
+  "draft_titles": [
+    "提交周报",
+    "整理项目资料"
+  ],
+  "passed": true,
+  "runtime_cleaned": true
+}

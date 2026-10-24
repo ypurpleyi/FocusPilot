@@ -4,16 +4,21 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "focuspilot"
-version = "0.1.0"
-description = "Local-first desktop task and reminder assistant; Pi integration planned"
+version = "0.2.0"
+description = "Windows task and reminder assistant with sandboxed Pi task capture"
 requires-python = ">=3.11"
 dependencies = ["PySide6==6.9.3"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8,<10"]
+mcp = ["mcp==2.3.0"]
+sandbox = ["pywin32==312; sys_platform == 'win32'"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+focuspilot = ["appcontainer_child.cs", "mcp_pipe_proxy.cjs", "mcp_pipe_fixture.cjs", "*.mjs"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

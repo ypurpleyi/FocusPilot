@@ -1,0 +1,188 @@
+{
+  "model_called": false,
+  "credentials_read": false,
+  "production_data_used": false,
+  "network_capability_count": 0,
+  "production_ready": false,
+  "profile": "FocusPilot.Prototype.935cd6096fa84db39bd86ad04d09abea",
+  "fixture-query": {
+    "identity_verified": true,
+    "forwarded_calls": 2,
+    "child_reaped": true,
+    "pipe_tag": "cb239597067344e68ab5683368ab703b",
+    "host_job_empty": true,
+    "worker_threads_stopped": true,
+    "pipe_closed": true,
+    "container_job_empty_after_cleanup": true,
+    "process": {
+      "appcontainer_token_verified": true,
+      "zero_capabilities": true,
+      "inherited_handle_count": 3,
+      "job_empty": true
+    },
+    "error": null
+  },
+  "pending_count": 2,
+  "duplicate_candidate_count": 2,
+  "db_boundary_process": {
+    "appcontainer_token_verified": true,
+    "zero_capabilities": true,
+    "inherited_handle_count": 3,
+    "job_empty": true
+  },
+  "direct_database_read_denied": true,
+  "illegal-call": {
+    "identity_verified": true,
+    "forwarded_calls": 0,
+    "child_reaped": true,
+    "pipe_tag": "3a14a4358f6843bb9a0dd2e875d63b5f",
+    "host_job_empty": true,
+    "worker_threads_stopped": true,
+    "pipe_closed": true,
+    "container_job_empty_after_cleanup": true,
+    "error": "invalid_tool_arguments"
+  },
+  "cancel": {
+    "identity_verified": true,
+    "forwarded_calls": 0,
+    "child_reaped": true,
+    "pipe_tag": "f748abdea041473b9c223a303ad739ff",
+    "host_job_empty": true,
+    "worker_threads_stopped": true,
+    "pipe_closed": true,
+    "container_job_empty_after_cleanup": true,
+    "error": "inactive_or_expired"
+  },
+  "timeout": {
+    "identity_verified": true,
+    "forwarded_calls": 0,
+    "child_reaped": true,
+    "pipe_tag": "d6fdd48f287f477a8ec9df0b8e2957ba",
+    "host_job_empty": true,
+    "worker_threads_stopped": true,
+    "pipe_closed": true,
+    "container_job_empty_after_cleanup": true,
+    "error": "inactive_or_expired"
+  },
+  "wrong-identity": {
+    "identity_verified": false,
+    "forwarded_calls": 0,
+    "child_reaped": true,
+    "pipe_tag": "75f98c0c99824cb5ac9e8c529d995e11",
+    "pipe_closed": true,
+    "error": "peer_identity_mismatch"
+  },
+  "offline_bridge_checks_passed": true,
+  "database_unchanged": true,
+  "copy": {
+    "files": 15029,
+    "bytes": 111843261,
+    "hashes_verified": true
+  },
+  "inprocess-normal": {
+    "identity_verified": true,
+    "forwarded_calls": 2,
+    "child_reaped": true,
+    "pipe_tag": "9ddc740c29fa4d4c994f28cee1945139",
+    "host_job_empty": true,
+    "worker_threads_stopped": true,
+    "pipe_closed": true,
+    "container_job_empty_after_cleanup": true,
+    "process": {
+      "appcontainer_token_verified": true,
+      "zero_capabilities": true,
+      "inherited_handle_count": 3,
+      "job_empty": true
+    },
+    "error": null,
+    "extension": {
+      "active_tools_at_ready": [
+        "mcp__focuspilot__find_duplicate_tasks",
+        "mcp__focuspilot__list_tasks"
+      ],
+      "registered_tools": [
+        "mcp__focuspilot__find_duplicate_tasks",
+        "mcp__focuspilot__list_tasks"
+      ],
+      "active_tools_after_shutdown": [],
+      "shutdown_called": true,
+      "fixed_driver": true,
+      "ready": true,
+      "call_after_stop_rejected": null
+    }
+  },
+  "inprocess-cancel": {
+    "identity_verified": true,
+    "forwarded_calls": 0,
+    "child_reaped": true,
+    "pipe_tag": "b3f50f5cab364a45ad2b7e70cd2f8d84",
+    "host_job_empty": true,
+    "worker_threads_stopped": true,
+    "pipe_closed": true,
+    "container_job_empty_after_cleanup": true,
+    "process": {
+      "appcontainer_token_verified": true,
+      "zero_capabilities": true,
+      "inherited_handle_count": 3,
+      "job_empty": true
+    },
+    "error": "inactive_or_expired",
+    "extension": {
+      "active_tools_at_ready": [
+        "mcp__focuspilot__find_duplicate_tasks",
+        "mcp__focuspilot__list_tasks"
+      ],
+      "registered_tools": [
+        "mcp__focuspilot__find_duplicate_tasks",
+        "mcp__focuspilot__list_tasks"
+      ],
+      "active_tools_after_shutdown": [],
+      "shutdown_called": true,
+      "fixed_driver": true,
+      "ready": false,
+      "call_after_stop_rejected": true
+    }
+  },
+  "inprocess-timeout": {
+    "identity_verified": true,
+    "forwarded_calls": 0,
+    "child_reaped": true,
+    "pipe_tag": "c956a1814be34176ab304eb7e2a87d81",
+    "host_job_empty": true,
+    "worker_threads_stopped": true,
+    "pipe_closed": true,
+    "container_job_empty_after_cleanup": true,
+    "process": {
+      "appcontainer_token_verified": true,
+      "zero_capabilities": true,
+      "inherited_handle_count": 3,
+      "job_empty": true
+    },
+    "error": "inactive_or_expired",
+    "extension": {
+      "active_tools_at_ready": [
+        "mcp__focuspilot__find_duplicate_tasks",
+        "mcp__focuspilot__list_tasks"
+      ],
+      "registered_tools": [
+        "mcp__focuspilot__find_duplicate_tasks",
+        "mcp__focuspilot__list_tasks"
+      ],
+      "active_tools_after_shutdown": [],
+      "shutdown_called": true,
+      "fixed_driver": true,
+      "ready": false,
+      "call_after_stop_rejected": true
+    }
+  },
+  "pi_inprocess_mcp_verified": true,
+  "pi_native_stdio_fixed": false,
+  "autonomous_agent_loop_tested": false,
+  "source_fingerprints_unchanged": true,
+  "source_acls_unchanged": true,
+  "profile_deleted": true,
+  "runtime_and_work_deleted": true,
+  "date": "2026-10-24",
+  "scope": "real_pi_inprocess_mcp_offline_fixture",
+  "overall_passed": true
+}

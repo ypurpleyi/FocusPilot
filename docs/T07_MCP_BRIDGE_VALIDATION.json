@@ -1,0 +1,90 @@
+{
+  "model_called": false,
+  "credentials_read": false,
+  "production_data_used": false,
+  "network_capability_count": 0,
+  "production_ready": false,
+  "profile": "FocusPilot.Prototype.b76e3e239c644aa9aafc74c3e0bed014",
+  "fixture-query": {
+    "identity_verified": true,
+    "forwarded_calls": 2,
+    "child_reaped": true,
+    "host_job_empty": true,
+    "worker_threads_stopped": true,
+    "pipe_closed": true,
+    "container_job_empty_after_cleanup": true,
+    "process": {
+      "appcontainer_token_verified": true,
+      "zero_capabilities": true,
+      "inherited_handle_count": 3,
+      "job_empty": true
+    },
+    "error": null
+  },
+  "pending_count": 2,
+  "duplicate_candidate_count": 2,
+  "db_boundary_process": {
+    "appcontainer_token_verified": true,
+    "zero_capabilities": true,
+    "inherited_handle_count": 3,
+    "job_empty": true
+  },
+  "direct_database_read_denied": true,
+  "illegal-call": {
+    "identity_verified": true,
+    "forwarded_calls": 0,
+    "child_reaped": true,
+    "host_job_empty": true,
+    "worker_threads_stopped": true,
+    "pipe_closed": true,
+    "container_job_empty_after_cleanup": true,
+    "error": "invalid_tool_arguments"
+  },
+  "cancel": {
+    "identity_verified": true,
+    "forwarded_calls": 0,
+    "child_reaped": true,
+    "host_job_empty": true,
+    "worker_threads_stopped": true,
+    "pipe_closed": true,
+    "container_job_empty_after_cleanup": true,
+    "error": "inactive_or_expired"
+  },
+  "timeout": {
+    "identity_verified": true,
+    "forwarded_calls": 0,
+    "child_reaped": true,
+    "host_job_empty": true,
+    "worker_threads_stopped": true,
+    "pipe_closed": true,
+    "container_job_empty_after_cleanup": true,
+    "error": "inactive_or_expired"
+  },
+  "wrong-identity": {
+    "identity_verified": false,
+    "forwarded_calls": 0,
+    "child_reaped": true,
+    "pipe_closed": true,
+    "error": "peer_identity_mismatch"
+  },
+  "offline_bridge_checks_passed": true,
+  "database_unchanged": true,
+  "node_spawn_cleanup": {
+    "container_job_empty_after_cleanup": true
+  },
+  "node_spawn_diagnostic": "before-spawn",
+  "pi_mcp_discovery_verified": false,
+  "failure": {
+    "type": "RuntimeError",
+    "detail": "Installed Node child_process.spawn with stdio pipes timed out in AppContainer; stopped before Pi copy"
+  },
+  "source_fingerprints_unchanged": true,
+  "source_acls_unchanged": true,
+  "profile_deleted": true,
+  "runtime_and_work_deleted": true,
+  "date": "2026-10-24",
+  "node_version": "v24.15.0",
+  "libuv_version": "1.51.0",
+  "scope": "offline_fixture_bridge_passed_pi_stdio_discovery_blocked",
+  "overall_passed": false
+}

@@ -1,0 +1,18 @@
+{
+  "date": "2026-10-24",
+  "scope": "one_authorized_prompt_with_fictional_tasks",
+  "provider": "deepseek",
+  "model": "deepseek-flash",
+  "summary": {
+    "pending_count": 2,
+    "duplicate_candidate_count": 2
+  },
+  "successful_tool_calls": [
+    "mcp__focuspilot__list_tasks",
+    "mcp__focuspilot__find_duplicate_tasks"
+  ],
+  "database_unchanged": true,
+  "production_database_used": false,
+  "production_gui_integrated": false,
+  "os_sandbox_verified": false
+}

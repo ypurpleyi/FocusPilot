@@ -83,6 +83,22 @@ class TaskStore:
             rows = c.execute("SELECT * FROM tasks ORDER BY created_at DESC").fetchall()
         return [Task(**dict(r)) for r in rows]
 
+    def create_many(self, fields):
+        """Application-only batch save after review. All inserts commit or none do."""
+        from .drafts import reviewed_fields
+        if not isinstance(fields, list) or not 1 <= len(fields) <= 5:
+            raise ValueError('一次保存1–5项待办')
+        validated = [reviewed_fields(item) for item in fields]
+        tasks = [Task(id=str(uuid.uuid4()), **item, status='pending',
+                      created_at=datetime.now().isoformat(timespec='seconds')) for item in validated]
+        with self._connect() as connection:
+            connection.executemany('''INSERT INTO tasks
+                (id,title,due_at,importance,estimated_minutes,status,created_at,snoozed_until,reminder_stage)
+                VALUES (?,?,?,?,?,?,?,?,?)''', [(task.id, task.title, task.due_at, task.importance,
+                task.estimated_minutes, task.status, task.created_at, task.snoozed_until,
+                task.reminder_stage) for task in tasks])
+        return tasks
+
     def get(self, task_id: str) -> Task | None:
         with self._connect() as c:
             row = c.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()

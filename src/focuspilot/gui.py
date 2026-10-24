@@ -156,6 +156,8 @@ class FocusWindow(QMainWindow):
         self._startup_enabled = False
         self._cleaned_up = False
         self.settings_dialog = None
+        self.analysis_dialog = None
+        self._analysis_exit_pending = False
         self.reminder_error = ""
         try:
             self.reminder_settings = self.store.load_reminder_settings()
@@ -193,6 +195,9 @@ class FocusWindow(QMainWindow):
         refresh_button.clicked.connect(self.refresh)
         actions.addWidget(refresh_button)
         container.addLayout(actions)
+        analyze_button = QPushButton('粘贴通知 · 分析待办')
+        analyze_button.clicked.connect(self.show_analysis)
+        container.addWidget(analyze_button)
         self.scroll = QScrollArea()
         self.scroll.setWidgetResizable(True)
         self.scroll.setFrameShape(QFrame.Shape.NoFrame)
@@ -257,8 +262,29 @@ class FocusWindow(QMainWindow):
             self.show_panel()
 
     def exit_app(self):
+        if self.analysis_dialog and not self.analysis_dialog.shutdown():
+            if not self._analysis_exit_pending:
+                self._analysis_exit_pending = True
+                self.analysis_dialog.worker.finished.connect(self.exit_app)
+            self.analysis_dialog.status.setText('正在结束分析并清理，完成后自动退出。')
+            return
         self.prepare_shutdown()
         QApplication.instance().quit()
+
+    def show_analysis(self):
+        if self.quitting:
+            return
+        if self.analysis_dialog is None:
+            try:
+                from .analysis_ui import AnalysisDialog
+                self.analysis_dialog = AnalysisDialog(self.store, self)
+                self.analysis_dialog.saved.connect(lambda count: (self.refresh(), self.tick()))
+            except ImportError:
+                QMessageBox.warning(self, '分析功能未就绪', '请按README安装项目的mcp和sandbox可选依赖后重试。')
+                return
+        self.analysis_dialog.show()
+        self.analysis_dialog.raise_()
+        self.analysis_dialog.activateWindow()
 
     def prepare_shutdown(self):
         if self._cleaned_up:
@@ -273,6 +299,11 @@ class FocusWindow(QMainWindow):
             self.capture_dialog.reject()
         if self.settings_dialog is not None:
             self.settings_dialog.reject()
+        if self.analysis_dialog is not None:
+            self.analysis_dialog.cancel()
+            if self.analysis_dialog.worker is not None:
+                self.analysis_dialog.worker.wait(30000)
+            self.analysis_dialog.shutdown()
 
     def apply_reminder_settings(self, settings):
         self.store.save_reminder_settings(settings, reset_alert_clock=bool(self.reminder_error))
@@ -419,6 +450,7 @@ class FocusWindow(QMainWindow):
             card.setObjectName("taskCard")
             layout = QVBoxLayout(card)
             label = QLabel(f"{badge}  {task.title}")
+            label.setTextFormat(Qt.TextFormat.PlainText)
             label.setWordWrap(True)
             label.setStyleSheet("font-size: 13px; font-weight: 600;")
             layout.addWidget(label)

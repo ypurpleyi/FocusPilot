@@ -1,0 +1,35 @@
+{
+  "production_data_used": false,
+  "qt_driver": "QTest-visible-windows",
+  "passed": true,
+  "count_confirmed": true,
+  "duplicate_keep_confirmed": true,
+  "reviewed_fields": 2,
+  "no_writes_before_confirmation": true,
+  "saved_and_reopened_count": 3,
+  "model_evidence": {
+    "sandbox_verified": true,
+    "model_connections": 2,
+    "mcp_calls": 1,
+    "draft_count": 2,
+    "duplicate_checks": 1,
+    "channels": [
+      {
+        "identity_verified": true,
+        "connections": null,
+        "bytes_to_model": null,
+        "bytes_from_model": null,
+        "error": null
+      },
+      {
+        "identity_verified": true,
+        "connections": 2,
+        "bytes_to_model": 13979,
+        "bytes_from_model": 87051,
+        "error": null
+      }
+    ]
+  },
+  "live_cancel_preserved_input_and_database": true,
+  "runtime_cleaned": true
+}
