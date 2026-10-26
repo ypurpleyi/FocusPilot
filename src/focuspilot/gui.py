@@ -10,7 +10,7 @@ from PySide6.QtCore import Qt, QDateTime, QTime, QTimer
 from PySide6.QtGui import QAction, QColor, QPalette, QSessionManager
 from PySide6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QDateTimeEdit, QDialog,
-    QDialogButtonBox, QFrame, QHBoxLayout, QLabel, QLineEdit, QMainWindow,
+    QDialogButtonBox, QFrame, QGraphicsDropShadowEffect, QHBoxLayout, QLabel, QLineEdit, QMainWindow,
     QMenu, QMessageBox, QPushButton, QScrollArea, QSpinBox, QStyle,
     QSystemTrayIcon, QTimeEdit, QVBoxLayout, QWidget,
 )
@@ -18,6 +18,36 @@ from PySide6.QtWidgets import (
 from .core import reminder_to_send, sort_tasks, urgency
 from .storage import TaskStore, default_db_path
 from .reminders import ReminderSettings, cooldown_remaining, delivery_policy, quiet_reason
+
+FOCUS_BACKGROUND = "#e5f3e7"
+
+
+def _feature_option(text, callback):
+    """Build a compact lavender action button with a double-line frame."""
+    outer = QFrame()
+    outer.setObjectName("featureOption")
+    outer_layout = QVBoxLayout(outer)
+    outer_layout.setContentsMargins(3, 3, 3, 3)
+    outer_layout.setSpacing(0)
+
+    inner = QFrame()
+    inner.setObjectName("featureOptionInner")
+    inner_layout = QVBoxLayout(inner)
+    inner_layout.setContentsMargins(1, 1, 1, 1)
+    inner_layout.setSpacing(0)
+
+    button = QPushButton(text)
+    button.setObjectName("featureOptionButton")
+    button.clicked.connect(callback)
+    inner_layout.addWidget(button)
+    outer_layout.addWidget(inner)
+
+    shadow = QGraphicsDropShadowEffect(outer)
+    shadow.setBlurRadius(9)
+    shadow.setOffset(0, 2)
+    shadow.setColor(QColor(132, 105, 164, 65))
+    outer.setGraphicsEffect(shadow)
+    return outer
 
 
 class AddTaskDialog(QDialog):
@@ -170,38 +200,75 @@ class FocusWindow(QMainWindow):
         self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowStaysOnTopHint)
         self.resize(390, 580)
         self.setStyleSheet("""
-            QMainWindow { background: #f7f8fc; }
+            QMainWindow { background: __FOCUS_BACKGROUND__; }
+            QDialog, QMessageBox, QMenu, QCalendarWidget { background-color: __FOCUS_BACKGROUND__; }
+            QWidget#centralPanel, QWidget#taskListContainer { background: __FOCUS_BACKGROUND__; }
+            QScrollArea { background: transparent; }
             QLabel { color: #1c2333; }
-            QPushButton { color: #1c2333; padding: 7px 9px; border-radius: 5px; background: #e8edfb; }
-            QPushButton:hover { background: #d7e3ff; }
-            QFrame#taskCard { background: white; border: 1px solid #e2e6ef; border-radius: 9px; }
-        """)
+            QPushButton {
+                color: #383340;
+                font-family: "Comic Sans MS", "幼圆", "YouYuan", "Segoe Print";
+                font-size: 10pt;
+                font-weight: 600;
+                padding: 6px 11px;
+                border: 1px solid #55535a;
+                border-radius: 9px;
+                background-color: #e9def7;
+            }
+            QPushButton:hover { background-color: #ded0f0; }
+            QPushButton:pressed { background-color: #d4c2e8; }
+            QFrame#featureOption {
+                background-color: #e9def7;
+                border: 1px solid #55535a;
+                border-radius: 10px;
+            }
+            QFrame#featureOptionInner {
+                background-color: transparent;
+                border: 1px dashed #55535a;
+                border-top-left-radius: 11px;
+                border-top-right-radius: 5px;
+                border-bottom-right-radius: 9px;
+                border-bottom-left-radius: 4px;
+            }
+            QPushButton#featureOptionButton {
+                color: #383340;
+                padding: 6px 7px;
+                border: none;
+                border-top-left-radius: 7px;
+                border-top-right-radius: 4px;
+                border-bottom-right-radius: 8px;
+                border-bottom-left-radius: 5px;
+                background-color: #e9def7;
+            }
+            QPushButton#featureOptionButton:hover { background-color: rgba(255, 255, 255, 75); }
+            QFrame#taskCard { border: 1px solid #d8d6df; border-radius: 12px; }
+        """.replace("__FOCUS_BACKGROUND__", FOCUS_BACKGROUND))
         root = QWidget()
+        root.setObjectName("centralPanel")
         self.setCentralWidget(root)
         container = QVBoxLayout(root)
         header = QLabel("🎯 FocusPilot")
         header.setStyleSheet("font-size: 22px; font-weight: 700; padding: 6px 0;")
         container.addWidget(header)
+        encouragement = QLabel("Keep going!")
+        encouragement.setStyleSheet(
+            'font-family: "Comic Sans MS", "Segoe Print"; font-size: 16px; '
+            'font-weight: 700; color: #e98daf; padding: 0 0 4px 2px;'
+        )
+        container.addWidget(encouragement)
         self.summary = QLabel()
         container.addWidget(self.summary)
         actions = QHBoxLayout()
-        add_button = QPushButton("＋ 添加任务")
-        add_button.clicked.connect(self.add_task)
-        actions.addWidget(add_button)
-        settings_button = QPushButton("提醒设置")
-        settings_button.clicked.connect(self.show_reminder_settings)
-        actions.addWidget(settings_button)
-        refresh_button = QPushButton("刷新")
-        refresh_button.clicked.connect(self.refresh)
-        actions.addWidget(refresh_button)
+        actions.addWidget(_feature_option("＋ 添加任务", self.add_task))
+        actions.addWidget(_feature_option("提醒设置", self.show_reminder_settings))
+        actions.addWidget(_feature_option("刷新", self.refresh))
         container.addLayout(actions)
-        analyze_button = QPushButton('粘贴通知 · 分析待办')
-        analyze_button.clicked.connect(self.show_analysis)
-        container.addWidget(analyze_button)
+        container.addWidget(_feature_option("粘贴通知 · 分析待办", self.show_analysis))
         self.scroll = QScrollArea()
         self.scroll.setWidgetResizable(True)
         self.scroll.setFrameShape(QFrame.Shape.NoFrame)
         self.list_container = QWidget()
+        self.list_container.setObjectName("taskListContainer")
         self.task_layout = QVBoxLayout(self.list_container)
         self.task_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         self.scroll.setWidget(self.list_container)
@@ -442,12 +509,19 @@ class FocusWindow(QMainWindow):
         if not tasks:
             self.task_layout.addWidget(QLabel("暂无待办。可以先添加一件最重要的事。"))
             return
+        pastel_palette = ((255, 214, 224), (255, 231, 190), (255, 246, 190),
+                          (205, 229, 250), (228, 214, 247))
         for task in tasks:
             level = urgency(task, now)
             badge = ("🔴 紧急", "🟠 优先", "🔵 普通")[level]
             due_text = task.due_at[:16].replace("T", " ") if task.due_at else "无截止时间"
             card = QFrame()
             card.setObjectName("taskCard")
+            color = pastel_palette[sum(ord(char) for char in task.id) % len(pastel_palette)]
+            card.setStyleSheet(
+                "QFrame#taskCard { background-color: rgba(%d, %d, %d, 128); "
+                "border: 1px solid #d8d6df; border-radius: 12px; }" % color
+            )
             layout = QVBoxLayout(card)
             label = QLabel(f"{badge}  {task.title}")
             label.setTextFormat(Qt.TextFormat.PlainText)
@@ -465,12 +539,8 @@ class FocusWindow(QMainWindow):
             elif task.due_at and datetime.fromisoformat(task.due_at) <= now:
                 layout.addWidget(QLabel("已逾期，等待提醒时段或通知间隔结束"))
             row = QHBoxLayout()
-            done = QPushButton("✓ 完成")
-            done.clicked.connect(lambda _, tid=task.id: self.complete_task(tid))
-            row.addWidget(done)
-            snooze = QPushButton("稍后10分钟")
-            snooze.clicked.connect(lambda _, tid=task.id: self.snooze_task(tid))
-            row.addWidget(snooze)
+            row.addWidget(_feature_option("✓ 完成", lambda _, tid=task.id: self.complete_task(tid)))
+            row.addWidget(_feature_option("稍后10分钟", lambda _, tid=task.id: self.snooze_task(tid)))
             layout.addLayout(row)
             self.task_layout.addWidget(card)
 
